@@ -1,8 +1,7 @@
 version: "3.7"
 services:
   req_counter:
-    # image: chtheolo/get-started:part1
-    image: req_counter_service_req_counter
+    image: req_counter_service
     hostname: "Host{{.Task.Slot}}"
     deploy:
       replicas: 3
