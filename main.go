@@ -9,7 +9,7 @@ import (
 
 func main() {
 
-	fmt.Print("Running :: http://localhost:8083")
+	fmt.Println("Running :: http://localhost:8083")
 
 	r := routes.Router()
 	fmt.Println(http.ListenAndServe(":8083", r))
