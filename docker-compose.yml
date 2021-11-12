@@ -1,0 +1,44 @@
+version: "3.7"
+services:
+  req_counter:
+    # image: chtheolo/get-started:part1
+    image: req_counter_service_req_counter
+    hostname: "Host{{.Task.Slot}}"
+    deploy:
+      replicas: 3
+      resources:
+        limits:
+          cpus: "0.1"
+          memory: 100M
+      restart_policy:
+        condition: on-failure
+    ports:
+      - "8083:8083"
+    networks:
+      - req_counter_net
+    links:
+     - "db"
+    depends_on:
+      - "db"
+  db:
+    image: redis
+    volumes:
+      - redis_data:/data
+    command:
+      - /bin/sh
+      - -c
+      - |
+          nohup redis-server --appendonly yes &
+          sleep 5
+          echo "Initialize Redis with key: total_count , value: 0"
+          redis-cli SET total_count 0
+          # this will keep container running
+          tail -f /dev/null
+    networks:
+      - req_counter_net
+    ports:
+      - "6379:6379"
+networks:
+    req_counter_net:
+volumes:
+  redis_data:
