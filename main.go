@@ -16,8 +16,8 @@ func main() {
 		panic(err)
 	}
 
-	// fmt.Println("Running :: http://localhost:8083")
-	fmt.Sprintf("Running :: %s:%s ", configurations.Service_host, configurations.Service_port)
+	service_message := fmt.Sprintf("Running :: %s:%s ", configurations.Service_host, configurations.Service_port)
+	fmt.Println(service_message)
 
 	r := routes.Router()
 	served := fmt.Sprintf(":%s", configurations.Service_port)
