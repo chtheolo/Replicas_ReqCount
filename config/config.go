@@ -14,6 +14,10 @@ type Configuration struct {
 	Container_db_port string
 }
 
+/*
+@Returns: a pointer to a configuration struct variable OR an error opening file
+@Functionality: reads the .env file
+*/
 func ConfigService() (*Configuration, error) {
 	// open .env file in the local directory
 	err := godotenv.Load(".env")

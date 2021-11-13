@@ -1,0 +1,33 @@
+version: "3.7"
+services:
+  req_counter:
+    container_name: req_counter_service
+    hostname: "host1"
+    build: .
+    ports:
+      - "8083:8083"
+    networks:
+      - req_counter_net
+    links:
+     - "db"
+    depends_on:
+      - "db"
+  db:
+    container_name: redis_db
+    image: redis
+    command:
+      - /bin/sh
+      - -c
+      - |
+          nohup redis-server &
+          sleep 5
+          echo "Initialize Redis with key: total_count , value: 0"
+          redis-cli SET total_count 0
+          # this will keep container running
+          tail -f /dev/null
+    networks:
+      - req_counter_net
+    ports:
+      - "6379:6379"
+networks:
+    req_counter_net:
