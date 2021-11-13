@@ -1,7 +1,6 @@
 package routes
 
 import (
-	"fmt"
 	"net/http"
 
 	"os"
@@ -26,20 +25,9 @@ var PORT string
 
 func returnReqCounter(w http.ResponseWriter, r *http.Request) {
 
-	total := redis.GetData()
-	total_count, err_convert := strconv.Atoi(total)
-
-	if err_convert != nil {
-		fmt.Println("convert to int total count")
-		panic(err_convert)
-	}
+	total := redis.IncrGet_total_count()
 
 	req_count++
-	total_count++
-
-	redis.SetData(total_count)
-
-	s_total_count := strconv.Itoa(total_count)
 	s_req_count := strconv.Itoa(req_count)
 
 	hostname, err := os.Hostname()
@@ -48,7 +36,7 @@ func returnReqCounter(w http.ResponseWriter, r *http.Request) {
 	}
 
 	/*Build the http response string*/
-	s_response := message_1 + hostname + ":" + PORT + ".\n" + message_2 + s_req_count + message_3 + s_total_count + message_4
+	s_response := message_1 + hostname + ":" + PORT + ".\n" + message_2 + s_req_count + message_3 + total + message_4
 
 	w.Header().Set("Content-Type", "application/text")
 	_, err1 := w.Write([]byte(s_response))

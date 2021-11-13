@@ -3,6 +3,7 @@ package redis
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"github.com/go-redis/redis/v8"
 	"github.com/req_counter_service/config"
@@ -43,32 +44,21 @@ func newClient() (*Database, error) {
 /* @Parameter: Integer (a number that is the total number of requests in the cluster).
    @Returns : void
 */
-func SetData(payload int) {
+func IncrGet_total_count() string {
 	var ctx = context.TODO()
 
 	db, err_client := newClient()
 	if err_client != nil {
 		fmt.Println(fmt.Errorf("Failed to connect to client with error: %s", err_client.Error()))
 	}
+	pipe := db.Client.TxPipeline()
 
-	db.Client.Set(ctx, "total_count", payload, 0)
-}
+	total_count := pipe.Incr(ctx, "total_count")
 
-/* @Parameter: no parameters.
-   @Returns : String (the total number of requests in the cluster until now.)
-*/
-func GetData() string {
-	var ctx = context.TODO()
-
-	db, err_client := newClient()
-	if err_client != nil {
-		fmt.Println(fmt.Errorf("Failed to connect to client with error: %s", err_client.Error()))
+	_, err_pipe := pipe.Exec(ctx)
+	if err_pipe != nil {
+		panic(err_pipe)
 	}
 
-	total_count, err := db.Client.Get(ctx, "total_count").Result()
-	if err != nil {
-		fmt.Println("Error with the get total_count")
-		panic(err)
-	}
-	return total_count
+	return strconv.FormatInt(total_count.Val(), 10)
 }
