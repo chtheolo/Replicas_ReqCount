@@ -30,16 +30,16 @@ The following picture shows us the .env files in our project:
 
 <img width="91" alt="env_replicas" src="https://user-images.githubusercontent.com/25862065/141652423-4505cb70-0a5c-4407-80df-c567987c16a9.png">
 
-After setting the **.env** file you can run the test for our infrustucture to be sure for our service functionality. Run the **testing_infrastructure.sh** script which is building and image of our service and deploying
-our service and a [**Redis**](https://redis.io/) in docker containers with no replicas. Then, the script run our test for the http Status code, return the result and then stop these containers. In this version, I had
-only one test for checking the http status code in our routes package but in the future, my goal is to implement more tests for our service in order to evaluate the behaviour in as many cases. Moreover, in a future 
-version I wll make an automating procedure that will run the tests and if the results do not fail, start automatically the delpoyment.
+After setting the **.env** file you can run the test for our infrustucture to be sure for our service functionality. Run the **testing_infrastructure.sh** script which is building an image of our service and deploying
+our service and a [**Redis**](https://redis.io/) in docker containers with no replicas. Since, containers are up, test for the http Status code 
+runs, returns the result and then stop the containers. In this version, I had only one test for checking the http status code in our routes package but in the future, my goal is to implement more tests for our service in order to evaluate the behaviour in as many cases. Moreover, in a future  version I wll make an automating procedure that will run the tests and if the results do not fail, then it will start automatically the delpoyment.
 
 ```
 bash testing_infrastructure.sh
 ```
 
-Finally, now we can run the **start_service.sh** script, which will deploy our sevrice with its replicas. First, it will built our image, the it will initialize the [**Docker Swarm**](https://docs.docker.com/engine/swarm/) if it was not been before, and then it will deploy the the sevice in our docker swarm.
+Finally, we can run the **start_service.sh** script, which will deploy our sevrice with its replicas. Firstly, it will built our image and it will 
+initialize the [**Docker Swarm**](https://docs.docker.com/engine/swarm/) if it has not been before, and then it will deploy the sevice in our docker swarm.
 
 ```
 bash start_service.sh
@@ -49,19 +49,18 @@ Now your service is up and running in ***http://localhost:PORT*** where **PORT**
 
 <a name="arch"></a>
 * ## Architecture
-There are a variety of different architecture solutions to apply developing this service. In this chapter I will analyze some of the options reffering to
+There is a variety of different architecture solutions to apply developing this service. In this chapter I will analyze some of the options reffering to
 their props and cons and also analyze the choosen architecture and tools.
 
 ### Instances
-Every replica of our service is a different instance of the same service. One architecture sollution was to built our sollution with a microservice 
-architecture meaning that every intance would have its own database in order to save its data. Although, for the project purposes, we do not need to save 
-any data expect from the atomic counter for the served requests. 
+Every replica of our service is a different instance of the same service. One architecture solution is to built our service with a microservice 
+architecture. This means that every intance would have its own database in order to save its data. Although, for the project purposes, we do not 
+need to save any data expect from the atomic counter for the served requests. 
 
 This counter inform us the number of the requests that have been served by a specific 
-instance while it was alive. For any reasons, this instance may be killed or stoped, so our load balancer, in this case Docker Swarm, is responsible to 
-generate a totally new instance. This means, that we have an absolutely new instance-replica of that service, which now it will count its own number of 
-served requests. So, I decide that we do not need a database for each instance, but we only want to keep this counter into the instance memory, as it is 
-depicting the server request number of that and only that instance.
+instance while it was alive. For any reasons, this instance may be killed or stoped, so our load balancer, in this case Docker Swarm, is 
+responsible to generate a totally new instance. This means, that we have an absolutely new instance-replica of that service that has not served 
+any request yet and it will count its own number of served requests. So, I decide that we do not need a database for each instance, but we only want to keep this counter into the instance memory, as it is depicting the number of served request of that instance.
 
 The two different architectures are being presented in the following figures:
 
@@ -71,37 +70,41 @@ The two different architectures are being presented in the following figures:
 
 
 ### Synchronize State
-Every replica-instance service must know the total number of served requests of the cluster. One way to do sync the total counter into all clusters is to 
-have an internal communication every database instance with each other. This a bad solution as it is increasing the communicatoin overhead as the replicas 
-grow in number. 
-Another approach in this architecture is to have a master database and the replicas. Each of the replica database must update the total count to the master, 
-and with its turn, the master update them all. This approach reduce the internal communication overhead of the first case.
+Every replica-instance service must also know the total number of served requests of the cluster. One way to sync the total counter into all 
+clusters is by having an internal communication each database with each other. This is a bad solution as it is increasing the 
+communication overhead as the replicas grow in number. 
+Another approach is to have a master database and the rest replicas acting as slaves. Each of the slave-database must update the total count to
+the master, and with the master with its turn, update them all. This approach reduce the internal communication overhead of the first case.
 
-In the choose architecture, in which we do not use databases, so we store the atomic number of served requests and the number of requests served by the cluster into
-the memory of each instance. To sync their state, one approach is to use an MQTT broker, that holds a topic, e.g. **'total_count'** and a publisher service. Each of the 
-replicas instances subscribe to that topic and each instance send the total count into the **Publisher** service. The Publisher push that data each time it receives 
-from one instance to the **'total_count' topic**, and as a result every instance that is a subscribed to that topic, receives and updates the total_count number.
+In my architecture, I do not use databases, so we store the atomic number of served requests and the total number of requests served by the 
+cluster into the memory of each instance. To sync their state, one approach is to use an MQTT broker, that holds a topic, e.g. **'total_count'** 
+and a publisher service. Each of the replicas instances subscribe to that topic and every time they receive a request, they increase and send the 
+total count into the **Publisher** service. The Publisher, each time it receives the total count from one instance service, push it into the 
+**'total_count' topic**, and as a result every instance which is subscribed to that topic, receives and updates it local total count number.
 
-The advantages of that architecture is that , it is fast but has some drwabacks. Let's analyze the case where an instance, for any reason stopped or killed by the load
-balancer, then the load balancer will replace it with a new one. It doesn't matter if the new instance lost some of the history transactions as it only needs the latest
-clusters total number of requests. The problem occurs, when the load balancer, choose to send the request to new one instance. The new instance, has total cluster number
-equal to zero, and forwards this into the Publisher, means that our cluster will receive wrong data.
+The advantages of using an MQTT broker is speed but it has some important drwabacks. In case where an instance, for any reason stopped or killed 
+by the load balancer, then the load balancer will replace it with a new one. It doesn't matter if the new instance has lost some of the history 
+transactions as it only needs the latest total number of requests. The problem occurs, when the load balancer, choose to send the request to the 
+new instance before that instance receives and updates is total number. So, having the new instance a total cluster number equal to zero, it will 
+forwards this into the Publisher, which means that the rest of the services will receive 0 total count.
 
-Another drawback of this solution, is that we do not keep the total number of served requests, and in case the system restarts, we will lose it.
-So, I decide to use a database as a master service that will keep the thruth of our system. The data that is going to be saved into our database do not have relation, but 
-they are <key,value>. So I choose to use, a NoSQL key,value database, the **Redis**.
+Another drawback of this solution, is that in case of a system restart, total count will be lost. So, I decide to use a database as a master
+service. Data do not have relation, as it is only a the value of the total requests. So I choose to use **Redis** which is a NoSQL key,value 
+database.
 
-Each instance, before sending back the response, asks the database for the total number of requests, then it updates the local total number and sends back this number to the database.
-The database ensures, that in case the entire system restarts, we will not lost our data. To do that, we use the Redis persistence mode. A problem that might occur in that 
-approahc, is when an instance receives the total number from the database, before updating the local total number and sends it back to the database, another instance 
-may catch the first one by receiving the old total number from the database, update its local total number and send it back into the database before the first one. 
+Each instance, for every received request, gets the total number of requests from Redis, increments it by one, updates the local total number and 
+sends the new total count number back to the database. The database ensures, that in case the entire system restarts, we will not lost our data. 
+To do that, we use the Redis persistence mode. Although, a race condition problem might occur, when an instance receives the total number from the 
+database, and before updating the database with is local total count, another instance service also asks the daabase and manage to update first 
+the database. 
 
-To understand better the problem we can see the followin figure:
+The following figures describes the above problem:
 
 ![case_3_4](https://user-images.githubusercontent.com/25862065/141658202-7e66ed72-02cb-4247-a2a5-991854ea9cbf.png)
 
-To solve this problem, I use an interesting feature of Redis which is called pipelining. Pipelining is  network optimization that allows a Redis client to send multiple requests to the server without waiting for replies and reading all of them at once. So, each instance now, increments the total number and receives it at once, avoiding
-race conditions between the instances. A code example is the following:
+I solved the race condition problem by using an interesting feature of Redis which is called pipelining. Pipelining is a network optimization that 
+allows a Redis client to send multiple requests to the server without waiting for replies and reading all of them at once. Moreover, each instance 
+now, increments the total number and receives it at one transaction, avoiding race conditions between the instances. A code example is the following:
 
 ```golang
 func IncrGet_total_count() string {
