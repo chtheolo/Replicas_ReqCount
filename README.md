@@ -6,6 +6,7 @@ The purpose of this project is to implement replicas of the same service and eac
 * [How to run](#how-to-run)
 * [Architecture](#arch)
 * [Future Work](#future)
+* [Update](#updates)
 
 <a name="how-to-install"></a>
 * ## How to install
@@ -20,8 +21,8 @@ The .env file must have the same structure as follows:
 ```.env
 SERVICE_HOST=localhost
 SERVICE_PORT=8083
-CONTAINER_DB_HOST=db
-CONTAINER_DB_PORT=6379
+ContainerDBhost=db
+ContainerDBport=6379
 ```
 
 For this project version, the .env file must be placed in two different places. Firstly, you have to set **.env** in the root git folder **/Replicas_ReqCount** and then copy the same **.env** file into the **/routes** package folder( .env in /routes folder is for testing purposes).
@@ -133,3 +134,31 @@ func IncrGet_total_count() string {
 2. Develop more tests for our service and automate the procedure. Build the infrastructure only if all tests pass.
 3. Use a production orchestrator like Kubernetes.
 4. Change my file structure into the golang's standard. [**Golang File Structure**](https://github.com/golang-standards/project-layout)
+
+<a name="updates"></a>
+* ## Updates
+
+1. **Code style**
+Use of golang.org/x/lint/golint linter.
+
+2. **context.Background()**
+Set it only in one place in the code.
+
+3. **string formatting**
+Use of fmt.Sprinf functionality to build and append strings.
+
+4. **Redis error handling**
+If INCR key fail, retry a second time, otherwise send back to the client error response StatusNotImplemented.
+
+5. **Do not use global variables(e.g. PORT)**
+Setting the code to read once the configurations for our service, like service PORT, and then pass it 
+as an argument to every function that needs that information.
+
+6. **Get the hostname once**
+Set the hostname once in our code, and then pass it as an argument to our router handle function, instead of getting it in every request.
+
+7. **Local Counter concurrency**
+Protect the local counter from concurrent writes(race conditions) by adding sync with mutexes.
+
+8. **Finish Test**
+Compare also the response body. 
