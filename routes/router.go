@@ -2,55 +2,108 @@ package routes
 
 import (
 	"net/http"
-
-	"os"
+	"fmt"
+	"sync"
 	"strconv"
 
 	"github.com/gorilla/mux"
 	"github.com/req_counter_service/redis"
 )
 
+/*Set total transanction attempts for incrementing total count*/
+var totalRedisTxAttempts = 2
+
 /*Global static variable for counting the number of request of the instance.*/
-var req_count = 0
+var reqCount int = 0
 
 /* HTTP plain/text return messages*/
 var (
-	message_1 = "You are talking to instance "
-	message_2 = "This is request "
-	message_3 = " to this instance and request "
-	message_4 = " to the cluster.\n"
+	message1 = "You are talking to instance "
+	message2 = "This is request "
+	message3 = " to this instance and request "
+	message4 = " to the cluster.\n"
 )
 
-var PORT string
+type serviceInfo struct {
+	port string
+	host string
+}
 
-func returnReqCounter(w http.ResponseWriter, r *http.Request) {
+var (
+	muIncr sync.Mutex
+	muTotaInc sync.Mutex
+)
 
-	total := redis.IncrGet_total_count()
+/*Function that increments the local counter protecting it with mutex*/
+func incrCount() {
+	muIncr.Lock()
+	reqCount++
+	defer muIncr.Unlock()
+}
 
-	req_count++
-	s_req_count := strconv.Itoa(req_count)
 
-	hostname, err := os.Hostname()
-	if err != nil {
-		panic(err)
+func incrTotalCount() (string, error) {
+	muTotaInc.Lock()
+	total, errIncrement := redis.IncrGetTotalCount()
+	if errIncrement != nil {
+		return "", errIncrement
 	}
+	defer muTotaInc.Unlock()
+	return total, nil
+}
 
-	/*Build the http response string*/
-	s_response := message_1 + hostname + ":" + PORT + ".\n" + message_2 + s_req_count + message_3 + total + message_4
+func (info serviceInfo) returnReqCounter(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/text")
-	_, err1 := w.Write([]byte(s_response))
-	if err1 != nil {
-		panic(err)
+
+	var total string
+	for attempts := 0; attempts < totalRedisTxAttempts; attempts++ {
+		totalCount, errIncr := incrTotalCount()
+		if errIncr != nil {
+			if attempts == totalRedisTxAttempts-1 {
+				fmt.Println(fmt.Errorf("Increment Transaction Error:%s", errIncr.Error()))
+				w.Write([]byte("Increment TransactionError"))
+				w.WriteHeader(http.StatusNotImplemented)
+				return
+			}
+			fmt.Println(fmt.Errorf("Increment Transaction Error:%s", errIncr.Error()))
+		}
+		
+		if totalCount != "" {
+			total = fmt.Sprintf("%s", totalCount)
+			break
+		}
 	}
+
+	/*Increment local counter with mutexes*/
+	incrCount()
+
+	/*Convert the reqCount to string and add in our response*/
+	sReqCount := strconv.Itoa(reqCount)
+
+	/*Build the http response string*/
+	sResponse := fmt.Sprintf("%s%s:%s.\n%s%s%s%s%s", message1, info.host, info.port, message2, sReqCount, message3, total, message4)
+
+	_, errResponse := w.Write([]byte(sResponse))
+	if errResponse != nil {
+		fmt.Println("Internal Service Error")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
 	w.WriteHeader(http.StatusOK)
 }
 
-/*export Router*/
-func Router(port string) *mux.Router {
-	PORT = port
+/*Router is the router handler of our service.*/
+func Router(servicePort string, serviceHostname string) *mux.Router {
+
+	info := serviceInfo {
+		port : servicePort,
+		host : serviceHostname,
+	}
+	
 	Router := mux.NewRouter().StrictSlash(true)
 
-	Router.HandleFunc("/", returnReqCounter).Methods("GET")
+	Router.HandleFunc("/", info.returnReqCounter).Methods("GET")
 	return Router
 }

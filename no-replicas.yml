@@ -5,7 +5,8 @@ services:
     hostname: "host1"
     build: .
     ports:
-      - "8083:8083"
+      # - "8083:8083"
+      - ${SERVICE_PORT}:${SERVICE_PORT}
     networks:
       - req_counter_net
     links:

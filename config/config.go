@@ -7,18 +7,21 @@ import (
 	"github.com/joho/godotenv"
 )
 
+/*Configuration ... */
 type Configuration struct {
-	Service_host      string
-	Service_port      string
-	Container_db_host string
-	Container_db_port string
+	ServiceHost   	string
+	ServicePort    	string
+	ContainerDBhost string
+	ContainerDBport string
+	HostName 		string
 }
 
-/*
+
+/*Initializer ... 
 @Returns: a pointer to a configuration struct variable OR an error opening file
 @Functionality: reads the .env file
 */
-func ConfigService() (*Configuration, error) {
+func Initializer() (*Configuration, error) {
 	// open .env file in the local directory
 	err := godotenv.Load(".env")
 	if err != nil {
@@ -26,10 +29,16 @@ func ConfigService() (*Configuration, error) {
 		return nil, err
 	}
 
+	hostname, err := os.Hostname()
+	if err != nil {
+		panic(err)
+	}
+
 	return &Configuration{
-		Service_host:      os.Getenv("SERVICE_HOST"),
-		Service_port:      os.Getenv("SERVICE_PORT"),
-		Container_db_host: os.Getenv("CONTAINER_DB_HOST"),
-		Container_db_port: os.Getenv("CONTAINER_DB_PORT"),
+		ServiceHost:     os.Getenv("SERVICE_HOST"),
+		ServicePort:     os.Getenv("SERVICE_PORT"),
+		ContainerDBhost: os.Getenv("CONTAINER_DB_HOST"),
+		ContainerDBport: os.Getenv("CONTAINER_DB_PORT"),
+		HostName: 		 hostname,
 	}, nil
 }

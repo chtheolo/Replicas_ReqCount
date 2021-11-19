@@ -9,30 +9,31 @@ import (
 	"github.com/req_counter_service/config"
 )
 
+/*Database is struct variable for a redis Client*/
 type Database struct {
 	Client *redis.Client
 }
 
 var (
-	Ctx = context.TODO()
+	ctx = context.Background()
 )
 
 func newClient() (*Database, error) {
-	configurations, err_config := config.ConfigService()
-	if err_config != nil {
-		fmt.Println(fmt.Errorf("Failed to connect to client with error: %s", err_config.Error()))
-		return nil, err_config
+	configurations, errInit := config.Initializer()
+	if errInit != nil {
+		fmt.Println(fmt.Errorf("Failed to connect to client with error: %s", errInit.Error()))
+		return nil, errInit
 	}
 
-	db_address := configurations.Container_db_host + ":" + configurations.Container_db_port
+	dbAddress := fmt.Sprintf("%s:%s",configurations.ContainerDBhost, configurations.ContainerDBport)
 
 	var redisClient = redis.NewClient(&redis.Options{
-		Addr:     db_address,
+		Addr:     dbAddress,
 		Password: "",
 		DB:       0,
 	})
 
-	if err := redisClient.Ping(Ctx).Err(); err != nil {
+	if err := redisClient.Ping(ctx).Err(); err != nil {
 		return nil, err
 	}
 
@@ -41,24 +42,24 @@ func newClient() (*Database, error) {
 	}, nil
 }
 
-/* @Parameter: Integer (a number that is the total number of requests in the cluster).
-   @Returns : void
+/*IncrGetTotalCount ...
+@Parameter: Integer (a number that is the total number of requests in the cluster).
+@Returns : string OR error
 */
-func IncrGet_total_count() string {
-	var ctx = context.TODO()
+func IncrGetTotalCount() (string, error) {
 
-	db, err_client := newClient()
-	if err_client != nil {
-		fmt.Println(fmt.Errorf("Failed to connect to client with error: %s", err_client.Error()))
+	db, errClient := newClient()
+	if errClient != nil {
+		fmt.Println(fmt.Errorf("Failed to connect to client with error: %s", errClient.Error()))
 	}
 	pipe := db.Client.TxPipeline()
 
-	total_count := pipe.Incr(ctx, "total_count")
+	totalCount := pipe.Incr(ctx, "total_count")
 
-	_, err_pipe := pipe.Exec(ctx)
-	if err_pipe != nil {
-		panic(err_pipe)
+	_, errPipe := pipe.Exec(ctx)
+	if errPipe != nil {
+		return "", errPipe
 	}
 
-	return strconv.FormatInt(total_count.Val(), 10)
+	return strconv.FormatInt(totalCount.Val(), 10), nil
 }
