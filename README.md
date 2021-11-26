@@ -7,6 +7,7 @@ The purpose of this project is to implement replicas of the same service and eac
 * [Architecture](#arch)
 * [Future Work](#future)
 * [Update](#updates)
+* [Update-2](#updates-2)
 
 <a name="how-to-install"></a>
 * ## How to install
@@ -21,8 +22,8 @@ The .env file must have the same structure as follows:
 ```.env
 SERVICE_HOST=localhost
 SERVICE_PORT=8083
-ContainerDBhost=db
-ContainerDBport=6379
+CONTAINER_DB_HOST=db
+CONTAINER_DB_PORT=6379
 ```
 
 For this project version, the .env file must be placed in two different places. Firstly, you have to set **.env** in the root git folder **/Replicas_ReqCount** and then copy the same **.env** file into the **/routes** package folder( .env in /routes folder is for testing purposes).
@@ -108,23 +109,22 @@ allows a Redis client to send multiple requests to the server without waiting fo
 now, increments the total number and receives it at one transaction, avoiding race conditions between the instances. A code example is the following:
 
 ```golang
-func IncrGet_total_count() string {
-	var ctx = context.TODO()
+func IncrGetTotalCount() (string, error) {
 
-	db, err_client := newClient()
-	if err_client != nil {
-		fmt.Println(fmt.Errorf("Failed to connect to client with error: %s", err_client.Error()))
+	db, errClient := newClient()
+	if errClient != nil {
+		fmt.Println(fmt.Errorf("Failed to connect to client with error: %s", errClient.Error()))
 	}
 	pipe := db.Client.TxPipeline()
 
-	total_count := pipe.Incr(ctx, "total_count")
+	totalCount := pipe.Incr(ctx, "total_count")
 
-	_, err_pipe := pipe.Exec(ctx)
-	if err_pipe != nil {
-		panic(err_pipe)
+	_, errPipe := pipe.Exec(ctx)
+	if errPipe != nil {
+		return "", errPipe
 	}
 
-	return strconv.FormatInt(total_count.Val(), 10)
+	return strconv.FormatInt(totalCount.Val(), 10), nil
 }
 ```
 <a name="future"></a>
@@ -162,3 +162,25 @@ Protect the local counter from concurrent writes(race conditions) by adding sync
 
 8. **Finish Test**
 Compare also the response body. 
+
+<a name="updates-2"></a>
+* ## Updates-2
+
+1. Fix the names of the environment variables in the .env file
+
+2. Remove all the panics from the project. I add logger package that writes the errors with timestamps into a log file. 
+
+3. Fix the dirty read. Add a function that reads the local counter by using mutexes for protection.
+
+4. Write comments with the proper way as linter indicates.
+
+5. No need to use mutexes in Redis increment command as it is atomic.
+
+6. Unnest the retry mechanism. If somenthing went wrong return the error
+back to the client and let him decide if he wants to retry again.
+Also, total cluster counter and local counter are consistent as in case of 
+having an error in incrementing the cluster total counter, the 
+function will return before incrementing the local counter. 
+
+7. Fix the request context problem. Now context from the request is propagated to redis function, and in case the client cancels the request,
+the redis increment also is being canceled.
