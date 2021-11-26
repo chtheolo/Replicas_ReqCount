@@ -1,13 +1,12 @@
 package config
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/joho/godotenv"
 )
 
-/*Configuration ... */
+// Configuration struct has all the necessary data that needs the service to get start.
 type Configuration struct {
 	ServiceHost   	string
 	ServicePort    	string
@@ -17,21 +16,18 @@ type Configuration struct {
 }
 
 
-/*Initializer ... 
-@Returns: a pointer to a configuration struct variable OR an error opening file
-@Functionality: reads the .env file
-*/
+// Initializer is a function that gets a pointer to a configuration struct variable OR an error opening file.
+// It reads the .env file and returns back a Configuration struct variable.
 func Initializer() (*Configuration, error) {
 	// open .env file in the local directory
 	err := godotenv.Load(".env")
 	if err != nil {
-		fmt.Println("Error loading .env file!")
 		return nil, err
 	}
 
-	hostname, err := os.Hostname()
-	if err != nil {
-		panic(err)
+	hostname, errHostname := os.Hostname()
+	if errHostname != nil {
+		return nil, errHostname
 	}
 
 	return &Configuration{

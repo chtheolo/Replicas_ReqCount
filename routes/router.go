@@ -4,19 +4,18 @@ import (
 	"net/http"
 	"fmt"
 	"sync"
-	"strconv"
+	"context"
 
 	"github.com/gorilla/mux"
 	"github.com/req_counter_service/redis"
+	"github.com/req_counter_service/logs"
 )
 
-/*Set total transanction attempts for incrementing total count*/
-var totalRedisTxAttempts = 2
 
-/*Global static variable for counting the number of request of the instance.*/
+// Global static variable for counting the number of request of the instance.
 var reqCount int = 0
 
-/* HTTP plain/text return messages*/
+// HTTP plain/text return messages.
 var (
 	message1 = "You are talking to instance "
 	message2 = "This is request "
@@ -31,62 +30,58 @@ type serviceInfo struct {
 
 var (
 	muIncr sync.Mutex
-	muTotaInc sync.Mutex
+	muRead sync.Mutex
 )
 
-/*Function that increments the local counter protecting it with mutex*/
+// Function that increments the local counter protecting it with mutex and return him back
+// as a string.
 func incrCount() {
 	muIncr.Lock()
-	reqCount++
 	defer muIncr.Unlock()
+	reqCount++
 }
 
-
-func incrTotalCount() (string, error) {
-	muTotaInc.Lock()
-	total, errIncrement := redis.IncrGetTotalCount()
-	if errIncrement != nil {
-		return "", errIncrement
-	}
-	defer muTotaInc.Unlock()
-	return total, nil
+// Function that reads the local count
+func readCount() int{
+	muRead.Lock()
+	defer muRead.Unlock()
+	return reqCount
 }
 
 func (info serviceInfo) returnReqCounter(w http.ResponseWriter, r *http.Request) {
 
+	ctx := r.Context()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	w.Header().Set("Content-Type", "application/text")
 
-	var total string
-	for attempts := 0; attempts < totalRedisTxAttempts; attempts++ {
-		totalCount, errIncr := incrTotalCount()
-		if errIncr != nil {
-			if attempts == totalRedisTxAttempts-1 {
-				fmt.Println(fmt.Errorf("Increment Transaction Error:%s", errIncr.Error()))
-				w.Write([]byte("Increment TransactionError"))
-				w.WriteHeader(http.StatusNotImplemented)
-				return
-			}
-			fmt.Println(fmt.Errorf("Increment Transaction Error:%s", errIncr.Error()))
-		}
-		
-		if totalCount != "" {
-			total = fmt.Sprintf("%s", totalCount)
-			break
-		}
+	// Increment cluster counter
+	total, errIncrement := redis.IncrGetTotalCount(ctx)
+	if errIncrement != nil {
+		fmt.Println(fmt.Errorf("Increment Transaction Error:%s", errIncrement.Error()))
+		logs.WriteLog(errIncrement.Error())
+
+		w.Write([]byte("Increment Transaction Error"))
+		w.WriteHeader(http.StatusNotImplemented)
+		return 
 	}
 
-	/*Increment local counter with mutexes*/
+	// Increment local counter
 	incrCount()
 
-	/*Convert the reqCount to string and add in our response*/
-	sReqCount := strconv.Itoa(reqCount)
+	// Read local counter
+	localCount := readCount()
 
-	/*Build the http response string*/
-	sResponse := fmt.Sprintf("%s%s:%s.\n%s%s%s%s%s", message1, info.host, info.port, message2, sReqCount, message3, total, message4)
+	// Build the http response string
+	strSuccessResponse := fmt.Sprintf("%s%s:%s.\n%s%d%s%s%s", message1, info.host, info.port, message2, localCount, message3, total, message4)
 
-	_, errResponse := w.Write([]byte(sResponse))
+	_, errResponse := w.Write([]byte(strSuccessResponse))
 	if errResponse != nil {
 		fmt.Println("Internal Service Error")
+		logs.WriteLog(errResponse.Error())
+
+		w.Write([]byte("Internal Service Error"))
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -94,7 +89,7 @@ func (info serviceInfo) returnReqCounter(w http.ResponseWriter, r *http.Request)
 	w.WriteHeader(http.StatusOK)
 }
 
-/*Router is the router handler of our service.*/
+// Router is the router handler of our service.
 func Router(servicePort string, serviceHostname string) *mux.Router {
 
 	info := serviceInfo {

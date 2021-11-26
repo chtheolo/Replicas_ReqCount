@@ -9,16 +9,14 @@ import (
 	"github.com/req_counter_service/config"
 )
 
-/*Database is struct variable for a redis Client*/
+// Database is struct variable for a redis Client
 type Database struct {
 	Client *redis.Client
 }
 
-var (
-	ctx = context.Background()
-)
-
-func newClient() (*Database, error) {
+// Generates a new Redis database client
+func newClient(ctx context.Context) (*Database, error) {
+	
 	configurations, errInit := config.Initializer()
 	if errInit != nil {
 		fmt.Println(fmt.Errorf("Failed to connect to client with error: %s", errInit.Error()))
@@ -42,24 +40,29 @@ func newClient() (*Database, error) {
 	}, nil
 }
 
-/*IncrGetTotalCount ...
-@Parameter: Integer (a number that is the total number of requests in the cluster).
-@Returns : string OR error
-*/
-func IncrGetTotalCount() (string, error) {
+// IncrGetTotalCount is a function that is responsible for making the INCR command transaction in Redis
+// and returns back the total request counter in string form. A Redis error is returned in case of
+//  something went wrong with the transaction/pipeline or a cancel error that is generated from the root ctx.
+func IncrGetTotalCount(ctx context.Context) (string, error) {
+	
+	select {
+	case <- ctx.Done():
+		err := ctx.Err()
+		return "", err
+	default:
+		db, errClient := newClient(ctx)
+		if errClient != nil {
+			return "", errClient
+		}
+		pipe := db.Client.TxPipeline()
 
-	db, errClient := newClient()
-	if errClient != nil {
-		fmt.Println(fmt.Errorf("Failed to connect to client with error: %s", errClient.Error()))
+		totalCount := pipe.Incr(ctx, "total_count")
+
+		_, errPipe := pipe.Exec(ctx)
+		if errPipe != nil {
+			return "", errPipe
+		}
+
+		return strconv.FormatInt(totalCount.Val(), 10), nil
 	}
-	pipe := db.Client.TxPipeline()
-
-	totalCount := pipe.Incr(ctx, "total_count")
-
-	_, errPipe := pipe.Exec(ctx)
-	if errPipe != nil {
-		return "", errPipe
-	}
-
-	return strconv.FormatInt(totalCount.Val(), 10), nil
 }
